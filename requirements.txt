@@ -1,0 +1,42 @@
+# Linguistic Fingerprinting Engine — Python dependencies
+#
+# INSTALL ORDER (run these three commands in sequence):
+#
+#   1. pip3 install -r requirements.txt
+#   2. python3 -m spacy download en_core_web_sm
+#   3. uvicorn main:app --reload --port 8000
+#
+# Python 3.10+ required. Using pip3 / python3 explicitly because on
+# macOS the bare `python` and `pip` commands often point to Python 2
+# or nothing at all.
+#
+# Version ranges rather than exact pins — this is what prevents the
+# "resolution-too-deep" error. Pip has much more room to find a
+# compatible set when it isn't forced to hit exact versions for every
+# transitive dependency simultaneously.
+
+# ── NLP ──────────────────────────────────────────────────────────────
+spacy>=3.7,<3.8
+
+# ── Readability metrics ───────────────────────────────────────────────
+textstat>=0.7
+
+# ── ML core ───────────────────────────────────────────────────────────
+scikit-learn>=1.4
+numpy>=1.24
+scipy>=1.11
+
+# ── Explainability ────────────────────────────────────────────────────
+# shap 0.45+ works with scikit-learn 1.4 and numpy 1.24+
+shap>=0.45
+
+# ── Serialization ─────────────────────────────────────────────────────
+joblib>=1.3
+
+# ── API ───────────────────────────────────────────────────────────────
+fastapi>=0.110
+uvicorn[standard]>=0.28
+pydantic>=2.6
+
+# ── Visualization ─────────────────────────────────────────────────────
+plotly>=5.18
