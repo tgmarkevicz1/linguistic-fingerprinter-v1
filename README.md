@@ -2,7 +2,7 @@
 
 > An end-to-end authorship attribution system that identifies writers across different text formats — matching a blog post to a tweet, or an email to an essay — by isolating the stylistic habits that persist regardless of medium.
 
-**Built by Trevor Markevicz** · CS + Linguistics, sophomore · [Live Demo](#) · [API Docs](#)
+**Built by Trevor Markevicz** · CS + Linguistics, sophomore <!-- · [Live Demo](#) · [API Docs](#) -->
 
 ---
 
