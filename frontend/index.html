@@ -3,614 +3,875 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Linguistic Fingerprint Engine</title>
+<title>Linguistic Fingerprint — Authorship Attribution</title>
 <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:        #080c10;
-    --surface:   #0d1117;
-    --surface2:  #161b22;
-    --border:    #21262d;
-    --accent:    #4a90d9;
-    --accent2:   #e84393;
-    --green:     #3fb950;
-    --yellow:    #d29922;
-    --orange:    #f0883e;
-    --text:      #e6edf3;
-    --muted:     #8b949e;
-    --font-mono: 'Space Mono', monospace;
-    --font-ui:   'Syne', sans-serif;
-    --radius:    6px;
-  }
+/* ─────────────────────────────────────────────
+   Design tokens
+───────────────────────────────────────────── */
+:root {
+  --bg:         #09090b;
+  --surface:    #111113;
+  --surface-2:  #18181b;
+  --border:     #27272a;
+  --border-2:   #3f3f46;
+  --text:       #fafafa;
+  --text-2:     #a1a1aa;
+  --text-3:     #52525b;
+  --accent:     #6366f1;          /* indigo — primary action */
+  --accent-dim: rgba(99,102,241,.12);
+  --accent-glow:rgba(99,102,241,.25);
+  --green:      #22c55e;
+  --green-dim:  rgba(34,197,94,.1);
+  --red:        #f43f5e;
+  --red-dim:    rgba(244,63,94,.1);
+  --amber:      #f59e0b;
+  --mono:       'Geist Mono', monospace;
+  --sans:       'Instrument Sans', sans-serif;
+  --r:          8px;
+  --r-sm:       5px;
+  --transition: 140ms ease;
+}
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* ─────────────────────────────────────────────
+   Reset & base
+───────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; -webkit-font-smoothing: antialiased; }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 13px;
-    line-height: 1.6;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  line-height: 1.5;
+  min-height: 100vh;
+}
 
-  /* Subtle scanline texture */
-  body::before {
-    content: '';
-    position: fixed; inset: 0;
-    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
-    pointer-events: none;
-    z-index: 1000;
-  }
+/* ─────────────────────────────────────────────
+   Layout shell
+───────────────────────────────────────────── */
+.shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 56px 1fr;
+  grid-template-areas:
+    "topbar topbar"
+    "sidebar main";
+  min-height: 100vh;
+}
 
-  /* ── Header ───────────────────────────────────────────────────── */
-  header {
-    border-bottom: 1px solid var(--border);
-    padding: 18px 40px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    background: var(--surface);
-    position: sticky; top: 0; z-index: 100;
-  }
+/* ─────────────────────────────────────────────
+   Top bar
+───────────────────────────────────────────── */
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky; top: 0; z-index: 100;
+}
 
-  .logo-mark {
-    width: 32px; height: 32px;
-    background: var(--accent);
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-    animation: pulse-hex 3s ease-in-out infinite;
-    flex-shrink: 0;
-  }
-  @keyframes pulse-hex { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.7;transform:scale(.94)} }
+.wordmark {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -.02em;
+}
+.wordmark span { color: var(--text-3); }
 
-  header h1 { font-family: var(--font-ui); font-size: 17px; font-weight: 800; }
-  header .subtitle { font-size: 10px; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+.topbar-divider {
+  width: 1px; height: 16px;
+  background: var(--border);
+  margin: 0 4px;
+}
 
-  .status-pill {
-    margin-left: auto;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 11px;
-    letter-spacing: .08em;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    display: flex; align-items: center; gap: 6px;
-  }
-  .status-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--yellow); animation: blink 1.5s steps(1) infinite; }
-  .status-pill.online .dot { background: var(--green); animation: none; }
-  @keyframes blink { 50%{opacity:0} }
+.version-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
 
-  /* ── Tab nav ──────────────────────────────────────────────────── */
-  nav {
-    display: flex;
-    gap: 0;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 0 32px;
-    overflow-x: auto;
-  }
+.api-indicator {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+  font-family: var(--mono);
+}
+.api-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transition: background var(--transition);
+}
+.api-indicator.online .api-dot  { background: var(--green); }
+.api-indicator.online .api-text { color: var(--text-2); }
 
-  .tab-btn {
-    font-family: var(--font-ui);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: .06em;
-    text-transform: uppercase;
-    padding: 12px 20px;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--muted);
-    cursor: pointer;
-    transition: color .15s, border-color .15s;
-    white-space: nowrap;
-    display: flex; align-items: center; gap: 7px;
-  }
-  .tab-btn:hover { color: var(--text); }
-  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
-  .tab-btn .tab-dot { width: 6px; height: 6px; border-radius: 50%; }
+/* ─────────────────────────────────────────────
+   Sidebar nav
+───────────────────────────────────────────── */
+.sidebar {
+  grid-area: sidebar;
+  border-right: 1px solid var(--border);
+  padding: 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 56px;
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+}
 
-  /* ── Page layout ──────────────────────────────────────────────── */
-  .page { display: none; padding: 32px 40px; max-width: 1100px; margin: 0 auto; }
-  .page.active { display: block; }
+.nav-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 8px 10px 4px;
+  font-family: var(--mono);
+}
 
-  /* ── Cards ────────────────────────────────────────────────────── */
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 24px 28px;
-    margin-bottom: 20px;
-  }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: var(--sans);
+}
+.nav-item:hover { background: var(--surface-2); color: var(--text); }
+.nav-item.active { background: var(--surface-2); color: var(--text); }
+.nav-item.active .nav-icon { color: var(--accent); }
 
-  .card-head {
-    display: flex; align-items: center; gap: 10px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 20px;
-  }
-  .card-head h2 { font-family: var(--font-ui); font-size: 14px; font-weight: 600; }
+.nav-icon {
+  width: 16px; height: 16px;
+  flex-shrink: 0;
+  color: var(--text-3);
+  transition: color var(--transition);
+}
 
-  .tag {
-    font-size: 10px; font-weight: 700;
-    padding: 2px 8px; border-radius: 3px;
-    letter-spacing: .12em; text-transform: uppercase;
-  }
-  .tag-enroll   { background:rgba(63,185,80,.12);  color:var(--green);   border:1px solid rgba(63,185,80,.3); }
-  .tag-identify { background:rgba(74,144,217,.12); color:var(--accent);  border:1px solid rgba(74,144,217,.3); }
-  .tag-compare  { background:rgba(232,67,147,.12); color:var(--accent2); border:1px solid rgba(232,67,147,.3); }
-  .tag-retrain  { background:rgba(240,136,62,.12); color:var(--orange);  border:1px solid rgba(240,136,62,.3); }
+.sidebar-footer {
+  margin-top: auto;
+  padding: 12px 10px 4px;
+  border-top: 1px solid var(--border);
+}
+.sidebar-footer p {
+  font-size: 11px;
+  color: var(--text-3);
+  font-family: var(--mono);
+  line-height: 1.7;
+}
+.sidebar-footer a { color: var(--text-2); text-decoration: none; }
+.sidebar-footer a:hover { color: var(--text); }
 
-  /* ── Two-column layout inside a card ─────────────────────────── */
-  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  @media(max-width:700px){ .two-col { grid-template-columns: 1fr; } }
+/* ─────────────────────────────────────────────
+   Main content area
+───────────────────────────────────────────── */
+main {
+  grid-area: main;
+  overflow-y: auto;
+}
 
-  /* ── Form elements ────────────────────────────────────────────── */
-  .field { display: flex; flex-direction: column; gap: 6px; }
+.page { display: none; }
+.page.active { display: block; }
 
-  label {
-    font-size: 10px; color: var(--muted);
-    letter-spacing: .1em; text-transform: uppercase;
-  }
+.page-inner {
+  max-width: 760px;
+  padding: 32px 36px;
+}
 
-  input[type=text], textarea, input[type=file] {
-    width: 100%;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text);
-    font-family: var(--font-mono);
-    font-size: 12px;
-    padding: 9px 13px;
-    outline: none;
-    transition: border-color .15s, box-shadow .15s;
-  }
-  input[type=text]:focus, textarea:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(74,144,217,.1);
-  }
-  textarea { resize: vertical; min-height: 110px; }
-  input[type=file] { cursor: pointer; }
+.page-header {
+  margin-bottom: 28px;
+}
+.page-header h1 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -.02em;
+  margin-bottom: 4px;
+}
+.page-header p {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
 
-  /* ── Buttons ──────────────────────────────────────────────────── */
-  .btn {
-    font-family: var(--font-ui); font-size: 12px; font-weight: 600;
-    letter-spacing: .07em; text-transform: uppercase;
-    padding: 10px 20px;
-    border-radius: var(--radius); border: none;
-    cursor: pointer;
-    transition: all .15s;
-    display: inline-flex; align-items: center; gap: 8px;
-    position: relative; overflow: hidden;
-  }
-  .btn:hover::after { content:''; position:absolute;inset:0;background:rgba(255,255,255,.06); }
-  .btn:active { transform: translateY(1px); }
-  .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+/* ─────────────────────────────────────────────
+   Cards
+───────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
 
-  .btn-primary  { background: var(--accent);  color: #fff; box-shadow: 0 0 16px rgba(74,144,217,.25); }
-  .btn-pink     { background: var(--accent2); color: #fff; box-shadow: 0 0 16px rgba(232,67,147,.25); }
-  .btn-orange   { background: var(--orange);  color: #fff; box-shadow: 0 0 16px rgba(240,136,62,.25); }
-  .btn-ghost    { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
-  .btn-sm       { padding: 6px 14px; font-size: 11px; }
+.card-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-family: var(--mono);
+  margin-bottom: 14px;
+}
 
-  /* ── Spinner ──────────────────────────────────────────────────── */
-  .spinner {
-    width: 14px; height: 14px;
-    border: 2px solid rgba(255,255,255,.25);
-    border-top-color: currentColor;
-    border-radius: 50%;
-    animation: spin .6s linear infinite;
-    display: none;
-  }
-  .spinner.on { display: inline-block; }
-  @keyframes spin { to{transform:rotate(360deg)} }
+/* ─────────────────────────────────────────────
+   Form elements
+───────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 6px; }
 
-  /* ── Section label ────────────────────────────────────────────── */
-  .section-label {
-    font-size: 10px; font-weight: 700;
-    letter-spacing: .14em; text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 10px;
-    margin-top: 4px;
-  }
+label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+}
 
-  /* ── Match results ────────────────────────────────────────────── */
-  .match-item {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .match-item:last-child { border-bottom: none; }
-  .match-rank  { font-size: 10px; color: var(--muted); width: 18px; flex-shrink: 0; }
-  .match-author{ font-family: var(--font-ui); font-weight: 600; font-size: 13px; flex: 1; }
-  .match-bar-wrap { flex: 2; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
-  .match-bar   { height: 100%; border-radius: 3px; transition: width .6s cubic-bezier(.16,1,.3,1); }
-  .rank-1 .match-bar { background: var(--accent); box-shadow: 0 0 8px rgba(74,144,217,.5); }
-  .rank-2 .match-bar { background: #7c5cbf; }
-  .rank-3 .match-bar { background: var(--muted); }
-  .match-prob  { font-size: 12px; font-weight: 700; width: 42px; text-align: right; flex-shrink: 0; }
-  .rank-1 .match-prob { color: var(--accent); }
+input[type=text], textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  line-height: 1.5;
+}
+input[type=text]:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+textarea { resize: vertical; min-height: 120px; }
 
-  /* ── SHAP grid ────────────────────────────────────────────────── */
-  .shap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .shap-item {
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 8px 12px;
-    display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  }
-  .shap-name { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .shap-val  { font-size: 11px; font-weight: 700; color: var(--accent2); flex-shrink: 0; }
+input[type=file] {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 12px;
+  cursor: pointer;
+  outline: none;
+}
+input[type=file]:hover { border-color: var(--border-2); }
 
-  /* ── Verdict banner ───────────────────────────────────────────── */
-  .verdict-banner {
-    border-radius: var(--radius);
-    padding: 14px 18px;
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 16px;
-  }
-  .verdict-banner.same    { background: rgba(63,185,80,.1);  border: 1px solid rgba(63,185,80,.3); }
-  .verdict-banner.diff    { background: rgba(232,67,147,.1); border: 1px solid rgba(232,67,147,.3); }
-  .verdict-text { font-family: var(--font-ui); font-size: 15px; font-weight: 700; }
-  .verdict-banner.same .verdict-text { color: var(--green); }
-  .verdict-banner.diff .verdict-text { color: var(--accent2); }
-  .verdict-score { font-family: var(--font-mono); font-size: 24px; font-weight: 700; color: var(--text); }
+/* ─────────────────────────────────────────────
+   Buttons
+───────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: var(--r-sm);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+}
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn:active:not(:disabled) { transform: translateY(1px); }
 
-  /* ── Radar chart ──────────────────────────────────────────────── */
-  .radar-wrap {
-    width: 100%; height: 400px;
-    background: #0d1117;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    margin-top: 8px;
-  }
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.4), 0 0 0 1px rgba(99,102,241,.3);
+}
+.btn-primary:hover:not(:disabled) {
+  background: #5254cc;
+  box-shadow: 0 1px 3px rgba(0,0,0,.4), 0 0 12px var(--accent-glow);
+}
 
-  /* ── Author chips ─────────────────────────────────────────────── */
-  .author-chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 4px 12px 4px 10px;
-    font-size: 12px; margin: 3px;
-    cursor: pointer;
-    transition: border-color .15s;
-  }
-  .author-chip:hover { border-color: var(--accent); }
-  .chip-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.btn-secondary {
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover:not(:disabled) { color: var(--text); border-color: var(--border-2); }
 
-  /* ── Text sample entries ──────────────────────────────────────── */
-  .text-entry {
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 8px 12px;
-    font-size: 12px; color: var(--muted);
-    display: flex; justify-content: space-between; align-items: center; gap: 8px;
-    margin-top: 4px;
-  }
-  .text-preview { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .remove-btn { color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; flex-shrink: 0; }
-  .remove-btn:hover { color: var(--accent2); }
+.btn-ghost {
+  background: transparent;
+  color: var(--text-2);
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.btn-ghost:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
 
-  /* ── Retrain status bar ───────────────────────────────────────── */
-  .retrain-status {
-    border-radius: var(--radius); padding: 12px 16px;
-    display: flex; align-items: center; gap: 12px;
-    border: 1px solid var(--border);
-    background: var(--surface2);
-    font-size: 12px;
-  }
-  .retrain-status.running { border-color: rgba(74,144,217,.4); }
-  .retrain-status.success { border-color: rgba(63,185,80,.4); color: var(--green); }
-  .retrain-status.error   { border-color: rgba(232,67,147,.4); color: var(--accent2); }
+/* ─────────────────────────────────────────────
+   Spinner
+───────────────────────────────────────────── */
+.spinner {
+  width: 13px; height: 13px;
+  border: 1.5px solid rgba(255,255,255,.2);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin .55s linear infinite;
+  display: none;
+}
+.spinner.on { display: block; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── Toast notification ───────────────────────────────────────── */
-  #toast {
-    position: fixed; bottom: 24px; right: 24px;
-    padding: 11px 18px;
-    border-radius: var(--radius);
-    font-size: 12px; font-family: var(--font-ui); font-weight: 600;
-    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
-    opacity: 0; transform: translateY(10px);
-    transition: all .2s; z-index: 999; pointer-events: none; max-width: 300px;
-  }
-  #toast.show  { opacity: 1; transform: translateY(0); }
-  #toast.ok    { border-color: var(--green);  color: var(--green); }
-  #toast.err   { border-color: var(--accent2); color: var(--accent2); }
+/* ─────────────────────────────────────────────
+   Row / stack helpers
+───────────────────────────────────────────── */
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.row > .field { flex: 1; min-width: 160px; }
+.row > .btn { flex-shrink: 0; }
 
-  /* ── Misc helpers ─────────────────────────────────────────────── */
-  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
-  .row > * { flex: 1; min-width: 140px; }
-  .row > .btn { flex: 0; white-space: nowrap; }
-  .hidden { display: none !important; }
-  .mt8  { margin-top: 8px; }
-  .mt16 { margin-top: 16px; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+
+.mt-12 { margin-top: 12px; }
+.mt-20 { margin-top: 20px; }
+.hidden { display: none !important; }
+
+/* ─────────────────────────────────────────────
+   Enroll — text sample list
+───────────────────────────────────────────── */
+.sample-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.sample-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-2);
+  font-family: var(--mono);
+}
+.sample-preview { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sample-remove {
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color var(--transition);
+}
+.sample-remove:hover { color: var(--red); }
+
+/* ─────────────────────────────────────────────
+   Author chips
+───────────────────────────────────────────── */
+.chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 11px 4px 9px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+  font-family: var(--mono);
+}
+.chip:hover { border-color: var(--border-2); color: var(--text); }
+.chip-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+/* ─────────────────────────────────────────────
+   Identify — match results
+───────────────────────────────────────────── */
+.match-list { display: flex; flex-direction: column; }
+.match-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.match-item:last-child { border-bottom: none; }
+.match-rank { font-size: 11px; color: var(--text-3); width: 20px; flex-shrink: 0; font-family: var(--mono); }
+.match-author { font-size: 13px; font-weight: 500; flex: 1; font-family: var(--mono); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.match-bar-track { flex: 2; height: 3px; background: var(--surface-2); border-radius: 2px; overflow: hidden; }
+.match-bar-fill  { height: 100%; border-radius: 2px; transition: width .5s cubic-bezier(.16,1,.3,1); }
+.rank-1 .match-bar-fill { background: var(--accent); }
+.rank-2 .match-bar-fill { background: #7c5cbf; }
+.rank-3 .match-bar-fill { background: var(--text-3); }
+.match-pct { font-size: 12px; font-weight: 500; font-family: var(--mono); width: 40px; text-align: right; flex-shrink: 0; }
+.rank-1 .match-pct { color: var(--accent); }
+
+/* ─────────────────────────────────────────────
+   SHAP feature grid
+───────────────────────────────────────────── */
+.shap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.shap-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 7px 10px;
+}
+.shap-name {
+  font-size: 11px;
+  color: var(--text-2);
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shap-val {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+
+/* ─────────────────────────────────────────────
+   Radar chart
+───────────────────────────────────────────── */
+.radar-wrap {
+  width: 100%;
+  height: 380px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  margin-top: 12px;
+}
+
+/* ─────────────────────────────────────────────
+   Compare — verdict banner
+───────────────────────────────────────────── */
+.verdict {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: var(--r);
+  margin-bottom: 20px;
+}
+.verdict.same { background: var(--green-dim); border: 1px solid rgba(34,197,94,.2); }
+.verdict.diff { background: var(--red-dim);   border: 1px solid rgba(244,63,94,.2); }
+.verdict-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-family: var(--mono);
+  margin-bottom: 3px;
+}
+.verdict-text { font-size: 15px; font-weight: 600; }
+.verdict.same .verdict-text { color: var(--green); }
+.verdict.diff .verdict-text { color: var(--red); }
+.verdict-score-label {
+  font-size: 10px;
+  color: var(--text-3);
+  font-family: var(--mono);
+  text-align: right;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.verdict-score { font-size: 26px; font-weight: 600; font-family: var(--mono); }
+
+/* ─────────────────────────────────────────────
+   Retrain status
+───────────────────────────────────────────── */
+.retrain-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--text-2);
+  margin-top: 12px;
+}
+.retrain-status.running { border-color: rgba(99,102,241,.3); }
+.retrain-status.success { border-color: rgba(34,197,94,.3); color: var(--green); }
+.retrain-status.error   { border-color: rgba(244,63,94,.3);  color: var(--red); }
+
+/* ─────────────────────────────────────────────
+   Code block / inline code
+───────────────────────────────────────────── */
+.code-block {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.8;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--accent);
+}
+
+/* ─────────────────────────────────────────────
+   Toast
+───────────────────────────────────────────── */
+#toast {
+  position: fixed;
+  bottom: 20px; right: 20px;
+  padding: 10px 16px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  font-family: var(--mono);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: all .18s ease;
+  z-index: 999;
+  pointer-events: none;
+  max-width: 280px;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+#toast.ok  { border-color: rgba(34,197,94,.4);  color: var(--green); }
+#toast.err { border-color: rgba(244,63,94,.4);  color: var(--red); }
+
+/* ─────────────────────────────────────────────
+   Scrollbar styling
+───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-2); }
 </style>
 </head>
 <body>
 
-<!-- ── Header ──────────────────────────────────────────────────────── -->
-<header>
-  <div class="logo-mark"></div>
-  <div>
-    <h1>Linguistic Fingerprint Engine</h1>
-    <div class="subtitle">Cross-medium authorship attribution · v2.1</div>
-  </div>
-  <div class="status-pill" id="status-pill">
-    <div class="dot"></div>
-    <span id="status-text">Connecting…</span>
-  </div>
-</header>
+<div class="shell">
 
-<!-- ── Tab navigation ──────────────────────────────────────────────── -->
-<nav>
-  <button class="tab-btn active" onclick="showTab('enroll')" id="tab-enroll">
-    <span class="tab-dot" style="background:var(--green)"></span> Enroll
-  </button>
-  <button class="tab-btn" onclick="showTab('identify')" id="tab-identify">
-    <span class="tab-dot" style="background:var(--accent)"></span> Identify
-  </button>
-  <button class="tab-btn" onclick="showTab('compare')" id="tab-compare">
-    <span class="tab-dot" style="background:var(--accent2)"></span> Compare Texts
-  </button>
-  <button class="tab-btn" onclick="showTab('retrain')" id="tab-retrain">
-    <span class="tab-dot" style="background:var(--orange)"></span> Retrain
-  </button>
-</nav>
-
-<!-- ══════════════════════════════════════════════════════════════════
-     TAB 1 — ENROLL
-═══════════════════════════════════════════════════════════════════ -->
-<div class="page active" id="page-enroll">
-
-  <div class="card">
-    <div class="card-head">
-      <span class="tag tag-enroll">Enroll</span>
-      <h2>Register an Author</h2>
+  <!-- ── Top bar ───────────────────────────────────────────── -->
+  <header class="topbar">
+    <span class="wordmark">linguistic<span>/</span>fingerprint</span>
+    <div class="topbar-divider"></div>
+    <span class="version-badge">v2.1</span>
+    <div class="api-indicator" id="api-indicator">
+      <div class="api-dot"></div>
+      <span class="api-text" id="api-text">connecting</span>
     </div>
+  </header>
 
-    <div class="field" style="margin-bottom:16px">
-      <label for="enroll-author">Author ID</label>
-      <input type="text" id="enroll-author" placeholder="e.g. hemingway_e" />
-    </div>
+  <!-- ── Sidebar nav ────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <div class="nav-section-label">Analysis</div>
 
-    <div class="field" style="margin-bottom:10px">
-      <label for="enroll-text-input">Add Text Sample</label>
-      <textarea id="enroll-text-input" placeholder="Paste a writing sample (min 10 tokens)…"></textarea>
-    </div>
-
-    <div class="row mt8">
-      <button class="btn btn-ghost btn-sm" onclick="addTextSample()">+ Add Sample</button>
-      <button class="btn btn-ghost btn-sm" onclick="clearSamples()">Clear All</button>
-      <button class="btn btn-primary" id="enroll-btn" onclick="submitEnroll()" style="margin-left:auto">
-        <div class="spinner" id="enroll-spinner"></div>
-        Enroll Author
-      </button>
-    </div>
-
-    <div id="text-list" class="hidden mt16">
-      <div class="section-label">Queued Samples</div>
-      <div id="text-entries"></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="section-label">Enrolled Authors</div>
-    <div id="author-chips"><span style="color:var(--muted);font-size:11px">None yet.</span></div>
-  </div>
-
-</div>
-
-<!-- ══════════════════════════════════════════════════════════════════
-     TAB 2 — IDENTIFY
-═══════════════════════════════════════════════════════════════════ -->
-<div class="page" id="page-identify">
-
-  <div class="card">
-    <div class="card-head">
-      <span class="tag tag-identify">Identify</span>
-      <h2>Attribute Unknown Text</h2>
-    </div>
-
-    <div class="field" style="margin-bottom:16px">
-      <label for="identify-text">Unknown Text</label>
-      <textarea id="identify-text" style="min-height:150px" placeholder="Paste the anonymous text to attribute…"></textarea>
-    </div>
-
-    <div class="row">
-      <button class="btn btn-primary" id="identify-btn" onclick="submitIdentify()" style="margin-left:auto">
-        <div class="spinner" id="identify-spinner"></div>
-        Run Attribution
-      </button>
-    </div>
-  </div>
-
-  <div class="card hidden" id="identify-results">
-    <div class="two-col">
-      <div>
-        <div class="section-label">Top Matches</div>
-        <div id="match-list"></div>
-      </div>
-      <div>
-        <div class="section-label">Key SHAP Features</div>
-        <div id="shap-list" class="shap-grid"></div>
-      </div>
-    </div>
-
-    <div class="mt16">
-      <div class="section-label">Radar Comparison</div>
-      <div class="row" style="margin-bottom:10px">
-        <div class="field">
-          <label for="compare-author">Compare Against Author</label>
-          <input type="text" id="compare-author" placeholder="Author ID" />
-        </div>
-        <button class="btn btn-pink btn-sm" onclick="runCompare()">
-          <div class="spinner" id="radar-spinner"></div>
-          Generate Radar
-        </button>
-      </div>
-      <div class="radar-wrap" id="radar-chart"></div>
-    </div>
-  </div>
-
-</div>
-
-<!-- ══════════════════════════════════════════════════════════════════
-     TAB 3 — COMPARE TEXTS
-     Two texts in, one similarity score + radar chart out.
-     No enrolled authors needed — completely self-contained.
-═══════════════════════════════════════════════════════════════════ -->
-<div class="page" id="page-compare">
-
-  <div class="card">
-    <div class="card-head">
-      <span class="tag tag-compare">Compare</span>
-      <h2>Direct Text Comparison</h2>
-    </div>
-
-    <!-- Side-by-side text inputs with optional label names -->
-    <div class="two-col">
-      <div>
-        <div class="field" style="margin-bottom:10px">
-          <label for="label-a">Label for Text A (optional)</label>
-          <input type="text" id="label-a" placeholder="e.g. Essay draft" value="Text A" />
-        </div>
-        <div class="field">
-          <label for="text-a">Text A</label>
-          <textarea id="text-a" style="min-height:160px" placeholder="Paste first text…"></textarea>
-        </div>
-      </div>
-      <div>
-        <div class="field" style="margin-bottom:10px">
-          <label for="label-b">Label for Text B (optional)</label>
-          <input type="text" id="label-b" placeholder="e.g. Tweet thread" value="Text B" />
-        </div>
-        <div class="field">
-          <label for="text-b">Text B</label>
-          <textarea id="text-b" style="min-height:160px" placeholder="Paste second text…"></textarea>
-        </div>
-      </div>
-    </div>
-
-    <div class="row mt16">
-      <button class="btn btn-pink" id="compare-texts-btn" onclick="submitCompareTexts()" style="margin-left:auto">
-        <div class="spinner" id="compare-spinner"></div>
-        Compare
-      </button>
-    </div>
-  </div>
-
-  <!-- Results: verdict banner + score, then radar chart -->
-  <div class="card hidden" id="compare-results">
-
-    <!--
-      Verdict banner — turns green for "same author", pink for "different".
-      The similarity score is the cosine similarity (0–100%) between
-      the two texts' feature vectors in the trained stylometric space.
-    -->
-    <div id="verdict-banner" class="verdict-banner">
-      <div>
-        <div style="font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px">Verdict</div>
-        <div class="verdict-text" id="verdict-text"></div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:2px">Similarity</div>
-        <div class="verdict-score" id="verdict-score"></div>
-      </div>
-    </div>
-
-    <div class="section-label">Feature Radar</div>
-    <div class="radar-wrap" id="compare-radar"></div>
-
-    <!--
-      How to read this chart:
-      Each axis is one of the top SHAP features — the stylometric dimensions
-      that most strongly identify authors in the trained model.
-      The closer the two polygons overlap, the more similar the writing style.
-    -->
-    <p style="font-size:11px;color:var(--muted);margin-top:10px">
-      Each axis is a top SHAP feature — the stylometric dimensions most
-      predictive of author identity. Closer overlap = more similar style.
-    </p>
-  </div>
-
-</div>
-
-<!-- ══════════════════════════════════════════════════════════════════
-     TAB 4 — RETRAIN
-     Upload a zip of new text data and retrain the model in-place.
-     The live server hot-swaps the model without a restart.
-═══════════════════════════════════════════════════════════════════ -->
-<div class="page" id="page-retrain">
-
-  <div class="card">
-    <div class="card-head">
-      <span class="tag tag-retrain">Retrain</span>
-      <h2>Retrain on New Data</h2>
-    </div>
-
-    <p style="color:var(--muted);font-size:12px;margin-bottom:20px;line-height:1.7">
-      Upload a <code style="color:var(--accent)">.zip</code> file containing one subfolder per author, each holding <code style="color:var(--accent)">.txt</code> files.
-      The model will be fully retrained on this data and the live server will hot-swap without a restart.
-      This usually takes 2–5 minutes depending on dataset size.
-    </p>
-
-    <!--
-      Expected zip structure:
-        my_data.zip
-          author_a/
-            post1.txt
-            post2.txt
-          author_b/
-            post1.txt
-            post2.txt
-
-      Each .txt must have at least 30 tokens.
-      Each author folder must have at least 2 texts.
-      The zip must contain at least 2 authors.
-    -->
-    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:20px;font-size:11px;color:var(--muted);line-height:1.9">
-      <div style="color:var(--text);font-weight:700;margin-bottom:6px;font-family:var(--font-ui)">Expected zip layout</div>
-      <code style="color:var(--accent)">my_data.zip</code><br>
-      &nbsp;&nbsp;<code style="color:var(--muted)">author_a/</code><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<code style="color:var(--muted)">post1.txt &nbsp;post2.txt …</code><br>
-      &nbsp;&nbsp;<code style="color:var(--muted)">author_b/</code><br>
-      &nbsp;&nbsp;&nbsp;&nbsp;<code style="color:var(--muted)">post1.txt &nbsp;post2.txt …</code><br>
-      <br>
-      Min <code style="color:var(--yellow)">30 tokens</code> per file · Min <code style="color:var(--yellow)">2 files</code> per author · Min <code style="color:var(--yellow)">2 authors</code>
-    </div>
-
-    <div class="field" style="margin-bottom:20px">
-      <label for="zip-upload">Training Data (.zip)</label>
-      <input type="file" id="zip-upload" accept=".zip" />
-    </div>
-
-    <button class="btn btn-orange" id="retrain-btn" onclick="submitRetrain()">
-      <div class="spinner" id="retrain-spinner"></div>
-      Upload &amp; Retrain
+    <button class="nav-item active" id="nav-enroll" onclick="showPage('enroll')">
+      <svg class="nav-icon" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.5">
+        <circle cx="8" cy="5" r="2.5"/><path d="M3 13c0-2.76 2.24-5 5-5s5 2.24 5 5"/>
+        <path d="M12 3v4M14 5h-4" stroke-width="1.5"/>
+      </svg>
+      Enroll Author
     </button>
 
-    <!-- Status bar — updated by polling /retrain/status every 2 seconds -->
-    <div id="retrain-status-bar" class="retrain-status hidden mt16">
-      <div class="spinner on" id="retrain-status-spinner"></div>
-      <span id="retrain-status-msg">Idle</span>
-    </div>
-  </div>
+    <button class="nav-item" id="nav-identify" onclick="showPage('identify')">
+      <svg class="nav-icon" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.5">
+        <circle cx="6.5" cy="6.5" r="3.5"/><path d="M11 11l2.5 2.5"/>
+      </svg>
+      Identify Text
+    </button>
 
+    <button class="nav-item" id="nav-compare" onclick="showPage('compare')">
+      <svg class="nav-icon" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.5">
+        <rect x="1.5" y="3" width="5" height="10" rx="1"/><rect x="9.5" y="3" width="5" height="10" rx="1"/>
+        <path d="M6.5 8h3"/>
+      </svg>
+      Compare Texts
+    </button>
+
+    <div class="nav-section-label" style="margin-top:8px">Model</div>
+
+    <button class="nav-item" id="nav-retrain" onclick="showPage('retrain')">
+      <svg class="nav-icon" fill="none" viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.5">
+        <path d="M2 8a6 6 0 1 0 1.5-3.9"/><path d="M2 4v4h4"/>
+      </svg>
+      Retrain
+    </button>
+
+    <div class="sidebar-footer">
+      <p>Built by <a href="https://github.com/tgmarkevicz1" target="_blank">Trevor Markevicz</a><br>CS + Linguistics</p>
+    </div>
+  </nav>
+
+  <!-- ── Main content ───────────────────────────────────────── -->
+  <main>
+
+    <!-- ═══════════════════════════════════════
+         PAGE: Enroll
+    ═══════════════════════════════════════ -->
+    <div class="page active" id="page-enroll">
+      <div class="page-inner">
+        <div class="page-header">
+          <h1>Enroll Author</h1>
+          <p>Register a writer by providing sample texts. The engine computes a mean feature vector — their stylometric fingerprint — and stores it for attribution.</p>
+        </div>
+
+        <div class="card">
+          <div class="stack">
+            <div class="field">
+              <label for="enroll-author">Author ID</label>
+              <input type="text" id="enroll-author" placeholder="e.g. twain_m" autocomplete="off" />
+            </div>
+
+            <div class="field">
+              <label for="enroll-text">Add Sample Text</label>
+              <textarea id="enroll-text" placeholder="Paste a writing sample (minimum 10 tokens)…" style="min-height:100px"></textarea>
+            </div>
+
+            <div class="row">
+              <button class="btn btn-ghost" onclick="addSample()">+ Add sample</button>
+              <button class="btn btn-ghost" onclick="clearSamples()">Clear all</button>
+              <button class="btn btn-primary" id="enroll-btn" onclick="submitEnroll()">
+                <div class="spinner" id="enroll-spinner"></div>
+                Enroll
+              </button>
+            </div>
+          </div>
+
+          <div id="sample-list-wrap" class="hidden">
+            <div class="card-label mt-12">Queued samples</div>
+            <div class="sample-list" id="sample-entries"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Enrolled authors</div>
+          <div class="chip-group" id="author-chips">
+            <span style="font-size:12px;color:var(--text-3);font-family:var(--mono)">No authors enrolled yet.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         PAGE: Identify
+    ═══════════════════════════════════════ -->
+    <div class="page" id="page-identify">
+      <div class="page-inner">
+        <div class="page-header">
+          <h1>Identify Text</h1>
+          <p>Attribute an anonymous text to the most likely enrolled author. Returns the top 3 matches with calibrated probabilities and the SHAP features that drove the attribution.</p>
+        </div>
+
+        <div class="card">
+          <div class="stack">
+            <div class="field">
+              <label for="identify-text">Unknown text</label>
+              <textarea id="identify-text" style="min-height:160px" placeholder="Paste the text to attribute…"></textarea>
+            </div>
+            <div class="row" style="justify-content:flex-end">
+              <button class="btn btn-primary" id="identify-btn" onclick="submitIdentify()">
+                <div class="spinner" id="identify-spinner"></div>
+                Run attribution
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="identify-results" class="hidden">
+          <div class="two-col">
+            <div class="card">
+              <div class="card-label">Top matches</div>
+              <div class="match-list" id="match-list"></div>
+            </div>
+            <div class="card">
+              <div class="card-label">Key SHAP features</div>
+              <div class="shap-grid" id="shap-list"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-label">Radar comparison</div>
+            <div class="row mt-12">
+              <div class="field">
+                <label for="compare-author-id">Compare against enrolled author</label>
+                <input type="text" id="compare-author-id" placeholder="Author ID" />
+              </div>
+              <button class="btn btn-secondary" onclick="runRadar()">
+                <div class="spinner" id="radar-spinner"></div>
+                Generate
+              </button>
+            </div>
+            <div class="radar-wrap" id="radar-chart"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         PAGE: Compare Texts
+    ═══════════════════════════════════════ -->
+    <div class="page" id="page-compare">
+      <div class="page-inner">
+        <div class="page-header">
+          <h1>Compare Texts</h1>
+          <p>Authorship verification — answer "did the same person write both?" — without needing enrolled authors. Computes cosine similarity between the two texts' feature vectors in stylometric space.</p>
+        </div>
+
+        <div class="card">
+          <div class="two-col">
+            <div class="stack">
+              <div class="field">
+                <label for="label-a">Label A</label>
+                <input type="text" id="label-a" value="Text A" />
+              </div>
+              <div class="field">
+                <label for="text-a">Text A</label>
+                <textarea id="text-a" style="min-height:160px" placeholder="Paste first text…"></textarea>
+              </div>
+            </div>
+            <div class="stack">
+              <div class="field">
+                <label for="label-b">Label B</label>
+                <input type="text" id="label-b" value="Text B" />
+              </div>
+              <div class="field">
+                <label for="text-b">Text B</label>
+                <textarea id="text-b" style="min-height:160px" placeholder="Paste second text…"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="row mt-20" style="justify-content:flex-end">
+            <button class="btn btn-primary" id="compare-btn" onclick="submitCompare()">
+              <div class="spinner" id="compare-spinner"></div>
+              Compare
+            </button>
+          </div>
+        </div>
+
+        <div id="compare-results" class="hidden">
+          <div id="verdict-el" class="verdict">
+            <div>
+              <div class="verdict-label">Verdict</div>
+              <div class="verdict-text" id="verdict-text"></div>
+            </div>
+            <div>
+              <div class="verdict-score-label">Similarity</div>
+              <div class="verdict-score" id="verdict-score"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-label">Feature radar</div>
+            <div class="radar-wrap" id="compare-radar"></div>
+            <p style="font-size:11px;color:var(--text-3);font-family:var(--mono);margin-top:10px;line-height:1.7">
+              Each axis is a top SHAP feature — the stylometric dimensions most predictive of author identity. Closer polygon overlap = more similar writing style.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════
+         PAGE: Retrain
+    ═══════════════════════════════════════ -->
+    <div class="page" id="page-retrain">
+      <div class="page-inner">
+        <div class="page-header">
+          <h1>Retrain Model</h1>
+          <p>Upload new training data to fully retrain the model. The server hot-swaps the new weights in memory — no restart needed. Retraining typically takes 2–5 minutes.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Expected zip layout</div>
+          <div class="code-block">
+            my_data.zip<br>
+            &nbsp;&nbsp;author_a/<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;post1.txt &nbsp;post2.txt …<br>
+            &nbsp;&nbsp;author_b/<br>
+            &nbsp;&nbsp;&nbsp;&nbsp;post1.txt &nbsp;post2.txt …<br>
+            <br>
+            <span style="color:var(--text-3)">Min <code>30 tokens</code>/file · Min <code>2 files</code>/author · Min <code>2 authors</code></span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="stack">
+            <div class="field">
+              <label for="zip-upload">Training data (.zip)</label>
+              <input type="file" id="zip-upload" accept=".zip" />
+            </div>
+            <div>
+              <button class="btn btn-primary" id="retrain-btn" onclick="submitRetrain()">
+                <div class="spinner" id="retrain-spinner"></div>
+                Upload &amp; retrain
+              </button>
+            </div>
+          </div>
+
+          <div id="retrain-status" class="retrain-status hidden">
+            <div class="spinner on" id="retrain-status-spinner"></div>
+            <span id="retrain-status-msg">Idle</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
 </div>
 
-<!-- ── Toast ────────────────────────────────────────────────────────── -->
+<!-- Toast -->
 <div id="toast"></div>
 
-<!-- ══════════════════════════════════════════════════════════════════
-     JavaScript
-═══════════════════════════════════════════════════════════════════ -->
 <script>
 const API = 'http://localhost:8000';
 
-// ── Utility ───────────────────────────────────────────────────────────────
+// ── Utilities ──────────────────────────────────────────────────────────────
 
 function esc(s) {
   return String(s)
@@ -618,17 +879,16 @@ function esc(s) {
     .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function toast(msg, type='') {
+function toast(msg, type = '') {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.className = `show ${type}`;
   clearTimeout(el._t);
-  el._t = setTimeout(() => { el.className = ''; }, 3400);
+  el._t = setTimeout(() => { el.className = ''; }, 3200);
 }
 
-function spinner(id, on) {
-  const el = document.getElementById(id);
-  if (el) el.classList.toggle('on', on);
+function setSpinner(id, on) {
+  document.getElementById(id)?.classList.toggle('on', on);
 }
 
 function setDisabled(id, on) {
@@ -636,125 +896,128 @@ function setDisabled(id, on) {
   if (el) el.disabled = on;
 }
 
-// ── Tab switching ─────────────────────────────────────────────────────────
+// ── API health check ───────────────────────────────────────────────────────
 
-function showTab(name) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('page-' + name).classList.add('active');
-  document.getElementById('tab-' + name).classList.add('active');
-}
-
-// ── API status check ──────────────────────────────────────────────────────
-
-async function checkStatus() {
+async function checkAPI() {
   try {
     const r = await fetch(`${API}/`);
     if (r.ok) {
-      document.getElementById('status-pill').classList.add('online');
-      document.getElementById('status-text').textContent = 'API Online';
+      const ind = document.getElementById('api-indicator');
+      ind.classList.add('online');
+      document.getElementById('api-text').textContent = 'api online';
     }
   } catch {
-    document.getElementById('status-text').textContent = 'API Offline';
+    document.getElementById('api-text').textContent = 'api offline';
   }
 }
-checkStatus();
+checkAPI();
 
-// ── ENROLL tab ────────────────────────────────────────────────────────────
+// ── Page navigation ────────────────────────────────────────────────────────
 
-let pendingTexts = [];
-let enrolledAuthors = [];
-
-function addTextSample() {
-  const ta = document.getElementById('enroll-text-input');
-  const text = ta.value.trim();
-  if (!text) { toast('Enter a text sample first.', 'err'); return; }
-  pendingTexts.push(text);
-  ta.value = '';
-  renderTextEntries();
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('nav-' + name).classList.add('active');
 }
 
-function removeText(i) {
-  pendingTexts.splice(i, 1);
-  renderTextEntries();
+// ── Enroll ─────────────────────────────────────────────────────────────────
+
+let pendingSamples = [];
+let enrolledAuthors = [];
+
+function addSample() {
+  const ta = document.getElementById('enroll-text');
+  const text = ta.value.trim();
+  if (!text) { toast('Enter a text sample.', 'err'); return; }
+  pendingSamples.push(text);
+  ta.value = '';
+  renderSamples();
+}
+
+function removeSample(i) {
+  pendingSamples.splice(i, 1);
+  renderSamples();
 }
 
 function clearSamples() {
-  pendingTexts = [];
-  renderTextEntries();
+  pendingSamples = [];
+  renderSamples();
 }
 
-function renderTextEntries() {
-  const container = document.getElementById('text-entries');
-  const wrapper   = document.getElementById('text-list');
-  if (pendingTexts.length === 0) { wrapper.classList.add('hidden'); return; }
-  wrapper.classList.remove('hidden');
-  container.innerHTML = pendingTexts.map((t, i) => `
-    <div class="text-entry">
-      <span class="text-preview">${esc(t.slice(0,80))}${t.length>80?'…':''}</span>
-      <span class="remove-btn" onclick="removeText(${i})">×</span>
+function renderSamples() {
+  const wrap = document.getElementById('sample-list-wrap');
+  const list = document.getElementById('sample-entries');
+  if (!pendingSamples.length) { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  list.innerHTML = pendingSamples.map((t, i) => `
+    <div class="sample-item">
+      <span class="sample-preview">${esc(t.slice(0, 90))}${t.length > 90 ? '…' : ''}</span>
+      <span class="sample-remove" onclick="removeSample(${i})">×</span>
     </div>`).join('');
 }
 
 async function submitEnroll() {
-  const author_id = document.getElementById('enroll-author').value.trim();
-  if (!author_id) { toast('Enter an Author ID.', 'err'); return; }
+  const authorId = document.getElementById('enroll-author').value.trim();
+  if (!authorId) { toast('Enter an Author ID.', 'err'); return; }
 
-  // Also capture anything still in the textarea
-  const ta = document.getElementById('enroll-text-input');
-  if (ta.value.trim()) { pendingTexts.push(ta.value.trim()); ta.value = ''; }
-  renderTextEntries();
+  // Capture anything still in the textarea
+  const ta = document.getElementById('enroll-text');
+  if (ta.value.trim()) { pendingSamples.push(ta.value.trim()); ta.value = ''; renderSamples(); }
+  if (!pendingSamples.length) { toast('Add at least one sample.', 'err'); return; }
 
-  if (pendingTexts.length === 0) { toast('Add at least one text sample.', 'err'); return; }
+  setSpinner('enroll-spinner', true);
+  setDisabled('enroll-btn', true);
 
-  spinner('enroll-spinner', true); setDisabled('enroll-btn', true);
   try {
     const res = await fetch(`${API}/enroll`, {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ author_id, texts: pendingTexts }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ author_id: authorId, texts: pendingSamples }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Enroll failed.');
-    toast(`✓ ${data.message}`, 'ok');
-    if (!enrolledAuthors.includes(author_id)) enrolledAuthors.push(author_id);
-    pendingTexts = [];
-    renderTextEntries();
-    renderAuthorChips();
-  } catch(e) {
+    toast(`Enrolled: ${authorId}`, 'ok');
+    if (!enrolledAuthors.includes(authorId)) enrolledAuthors.push(authorId);
+    pendingSamples = [];
+    renderSamples();
+    renderChips();
+  } catch (e) {
     toast(e.message, 'err');
   } finally {
-    spinner('enroll-spinner', false); setDisabled('enroll-btn', false);
+    setSpinner('enroll-spinner', false);
+    setDisabled('enroll-btn', false);
   }
 }
 
-function renderAuthorChips() {
+function renderChips() {
   const el = document.getElementById('author-chips');
-  if (enrolledAuthors.length === 0) {
-    el.innerHTML = '<span style="color:var(--muted);font-size:11px">None yet.</span>';
+  if (!enrolledAuthors.length) {
+    el.innerHTML = '<span style="font-size:12px;color:var(--text-3);font-family:var(--mono)">No authors enrolled yet.</span>';
     return;
   }
   el.innerHTML = enrolledAuthors.map(a => `
-    <span class="author-chip" onclick="document.getElementById('compare-author').value='${esc(a)}'">
+    <span class="chip" onclick="document.getElementById('compare-author-id').value='${esc(a)}'">
       <span class="chip-dot"></span>${esc(a)}
     </span>`).join('');
 }
 
-// ── IDENTIFY tab ──────────────────────────────────────────────────────────
+// ── Identify ───────────────────────────────────────────────────────────────
 
-let lastIdentifyDone = false;
+let identifyDone = false;
 
 async function submitIdentify() {
   const text = document.getElementById('identify-text').value.trim();
   if (!text) { toast('Paste a text to identify.', 'err'); return; }
 
-  spinner('identify-spinner', true); setDisabled('identify-btn', true);
+  setSpinner('identify-spinner', true);
+  setDisabled('identify-btn', true);
   document.getElementById('identify-results').classList.add('hidden');
 
   try {
     const res = await fetch(`${API}/identify`, {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
     const data = await res.json();
@@ -763,36 +1026,36 @@ async function submitIdentify() {
     renderMatches(data.top_matches);
     renderShap(data.shap_features);
     document.getElementById('identify-results').classList.remove('hidden');
-    lastIdentifyDone = true;
+    identifyDone = true;
 
-    // Pre-fill compare field with the top match for convenience
-    if (data.top_matches.length > 0) {
-      document.getElementById('compare-author').value = data.top_matches[0].author;
+    if (data.top_matches.length) {
+      document.getElementById('compare-author-id').value = data.top_matches[0].author;
     }
-    toast(`Attribution complete · ${data.token_count} tokens analysed`, 'ok');
-  } catch(e) {
+    toast(`Attribution complete · ${data.token_count} tokens`, 'ok');
+  } catch (e) {
     toast(e.message, 'err');
   } finally {
-    spinner('identify-spinner', false); setDisabled('identify-btn', false);
+    setSpinner('identify-spinner', false);
+    setDisabled('identify-btn', false);
   }
 }
 
 function renderMatches(matches) {
   document.getElementById('match-list').innerHTML = matches.map((m, i) => `
-    <div class="match-item rank-${i+1}">
-      <span class="match-rank">#${i+1}</span>
+    <div class="match-item rank-${i + 1}">
+      <span class="match-rank">#${i + 1}</span>
       <span class="match-author">${esc(m.author)}</span>
-      <div class="match-bar-wrap">
-        <div class="match-bar" style="width:${(m.probability*100).toFixed(1)}%"></div>
+      <div class="match-bar-track">
+        <div class="match-bar-fill" style="width:${(m.probability * 100).toFixed(1)}%"></div>
       </div>
-      <span class="match-prob">${(m.probability*100).toFixed(1)}%</span>
+      <span class="match-pct">${(m.probability * 100).toFixed(1)}%</span>
     </div>`).join('');
 }
 
 function renderShap(features) {
   const el = document.getElementById('shap-list');
-  if (!features || features.length === 0) {
-    el.innerHTML = '<span style="color:var(--muted);font-size:11px">No SHAP data.</span>';
+  if (!features?.length) {
+    el.innerHTML = '<span style="color:var(--text-3);font-size:11px;font-family:var(--mono)">No SHAP data.</span>';
     return;
   }
   el.innerHTML = features.map(f => `
@@ -802,168 +1065,156 @@ function renderShap(features) {
     </div>`).join('');
 }
 
-async function runCompare() {
-  const author_id = document.getElementById('compare-author').value.trim();
-  if (!author_id) { toast('Enter an author ID.', 'err'); return; }
-  if (!lastIdentifyDone) { toast('Run identification first.', 'err'); return; }
+async function runRadar() {
+  const authorId = document.getElementById('compare-author-id').value.trim();
+  if (!authorId) { toast('Enter an author ID.', 'err'); return; }
+  if (!identifyDone) { toast('Run identification first.', 'err'); return; }
 
-  spinner('radar-spinner', true);
+  setSpinner('radar-spinner', true);
   try {
-    const res = await fetch(`${API}/compare/${encodeURIComponent(author_id)}`);
+    const res = await fetch(`${API}/compare/${encodeURIComponent(authorId)}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Compare failed.');
-    Plotly.newPlot('radar-chart', data.data, data.layout, {responsive:true, displayModeBar:false});
-    toast(`Radar chart generated`, 'ok');
-  } catch(e) {
+    renderRadar('radar-chart', data);
+    toast('Radar chart generated.', 'ok');
+  } catch (e) {
     toast(e.message, 'err');
   } finally {
-    spinner('radar-spinner', false);
+    setSpinner('radar-spinner', false);
   }
 }
 
-// ── COMPARE TEXTS tab ─────────────────────────────────────────────────────
-//
-// Sends two raw texts to POST /compare-texts.
-// The API computes cosine similarity between their feature vectors and
-// returns a verdict, a similarity score, and a Plotly radar chart.
+// ── Compare Texts ──────────────────────────────────────────────────────────
 
-async function submitCompareTexts() {
-  const text_a = document.getElementById('text-a').value.trim();
-  const text_b = document.getElementById('text-b').value.trim();
-  const label_a = document.getElementById('label-a').value.trim() || 'Text A';
-  const label_b = document.getElementById('label-b').value.trim() || 'Text B';
+async function submitCompare() {
+  const textA = document.getElementById('text-a').value.trim();
+  const textB = document.getElementById('text-b').value.trim();
+  const labelA = document.getElementById('label-a').value.trim() || 'Text A';
+  const labelB = document.getElementById('label-b').value.trim() || 'Text B';
 
-  if (!text_a || !text_b) { toast('Paste both texts before comparing.', 'err'); return; }
+  if (!textA || !textB) { toast('Paste both texts before comparing.', 'err'); return; }
 
-  spinner('compare-spinner', true); setDisabled('compare-texts-btn', true);
+  setSpinner('compare-spinner', true);
+  setDisabled('compare-btn', true);
   document.getElementById('compare-results').classList.add('hidden');
 
   try {
     const res = await fetch(`${API}/compare-texts`, {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ text_a, text_b, label_a, label_b }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text_a: textA, text_b: textB, label_a: labelA, label_b: labelB }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Comparison failed.');
 
-    // Render verdict banner
     const isSame = data.verdict.toLowerCase().includes('same');
-    const banner = document.getElementById('verdict-banner');
-    banner.className = 'verdict-banner ' + (isSame ? 'same' : 'diff');
+    const verdictEl = document.getElementById('verdict-el');
+    verdictEl.className = 'verdict ' + (isSame ? 'same' : 'diff');
     document.getElementById('verdict-text').textContent  = data.verdict;
     document.getElementById('verdict-score').textContent = data.confidence;
 
-    // Render radar chart
-    Plotly.newPlot('compare-radar', data.radar_chart.data, data.radar_chart.layout, {
-      responsive: true, displayModeBar: false,
-    });
-
+    renderRadar('compare-radar', data.radar_chart);
     document.getElementById('compare-results').classList.remove('hidden');
     toast(`Similarity: ${data.confidence}`, 'ok');
-  } catch(e) {
+  } catch (e) {
     toast(e.message, 'err');
   } finally {
-    spinner('compare-spinner', false); setDisabled('compare-texts-btn', false);
+    setSpinner('compare-spinner', false);
+    setDisabled('compare-btn', false);
   }
 }
 
-// ── RETRAIN tab ───────────────────────────────────────────────────────────
-//
-// Uploads a .zip to POST /retrain, then polls GET /retrain/status every 2s
-// to update the status bar until the job completes or fails.
+// ── Retrain ────────────────────────────────────────────────────────────────
 
-let retrainPollTimer = null;
+let retrainPoll = null;
 
 async function submitRetrain() {
   const fileInput = document.getElementById('zip-upload');
-  if (!fileInput.files.length) { toast('Select a .zip file first.', 'err'); return; }
-
+  if (!fileInput.files.length) { toast('Select a .zip file.', 'err'); return; }
   const file = fileInput.files[0];
   if (!file.name.endsWith('.zip')) { toast('File must be a .zip', 'err'); return; }
 
-  const formData = new FormData();
-  formData.append('file', file);
+  const form = new FormData();
+  form.append('file', file);
 
   setDisabled('retrain-btn', true);
-  spinner('retrain-spinner', true);
-  showRetrainStatus('running', 'Uploading…');
+  setSpinner('retrain-spinner', true);
+  showRetrainStatus('running', 'Uploading…', true);
 
   try {
-    const res = await fetch(`${API}/retrain`, { method: 'POST', body: formData });
+    const res = await fetch(`${API}/retrain`, { method: 'POST', body: form });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Upload failed.');
-
-    // Retraining is now running in the background — start polling for updates
-    startRetrainPolling();
-    toast('Retrain started. This takes a few minutes…', 'ok');
-  } catch(e) {
+    startRetrainPoll();
+    toast('Retraining started…', 'ok');
+  } catch (e) {
     toast(e.message, 'err');
-    showRetrainStatus('error', e.message);
-    spinner('retrain-spinner', false);
+    showRetrainStatus('error', e.message, false);
+    setSpinner('retrain-spinner', false);
     setDisabled('retrain-btn', false);
   }
 }
 
-function startRetrainPolling() {
-  // Clear any existing poll timer before starting a new one
-  if (retrainPollTimer) clearInterval(retrainPollTimer);
-
-  retrainPollTimer = setInterval(async () => {
+function startRetrainPoll() {
+  if (retrainPoll) clearInterval(retrainPoll);
+  retrainPoll = setInterval(async () => {
     try {
       const res  = await fetch(`${API}/retrain/status`);
       const data = await res.json();
-
-      showRetrainStatus(
-        data.running ? 'running' : (data.success ? 'success' : 'error'),
-        data.message,
-        data.running,
-      );
-
+      const type = data.running ? 'running' : (data.success ? 'success' : 'error');
+      showRetrainStatus(type, data.message, data.running);
       if (!data.running) {
-        // Job finished — stop polling and re-enable the button
-        clearInterval(retrainPollTimer);
-        retrainPollTimer = null;
-        spinner('retrain-spinner', false);
+        clearInterval(retrainPoll);
+        retrainPoll = null;
+        setSpinner('retrain-spinner', false);
         setDisabled('retrain-btn', false);
-
-        if (data.success) {
-          toast('Retrain complete. Model updated.', 'ok');
-          // After successful retrain, refresh our local known-authors list
-          fetchAuthors();
-        } else {
-          toast('Retrain failed — see status bar.', 'err');
-        }
+        if (data.success) { toast('Retrain complete.', 'ok'); fetchAuthors(); }
+        else toast('Retrain failed.', 'err');
       }
-    } catch {
-      // API temporarily unreachable — keep polling
-    }
-  }, 2000);  // Poll every 2 seconds
+    } catch { /* keep polling */ }
+  }, 2000);
 }
 
-function showRetrainStatus(type, message, showSpinner=false) {
-  const bar = document.getElementById('retrain-status-bar');
-  const msg = document.getElementById('retrain-status-msg');
-  const sp  = document.getElementById('retrain-status-spinner');
+function showRetrainStatus(type, msg, showSpinner = false) {
+  const bar = document.getElementById('retrain-status');
+  const msgEl = document.getElementById('retrain-status-msg');
+  const sp = document.getElementById('retrain-status-spinner');
   bar.className = `retrain-status ${type}`;
   bar.classList.remove('hidden');
-  msg.textContent = message;
+  msgEl.textContent = msg;
   sp.classList.toggle('on', showSpinner);
 }
 
-// ── Fetch enrolled authors from server ────────────────────────────────────
-// Called after a successful retrain to sync the UI with the new model.
+// ── Radar chart helper ─────────────────────────────────────────────────────
+
+function renderRadar(containerId, figureData) {
+  // figureData is the Plotly JSON from the API.
+  // Patch layout for current theme so it stays consistent.
+  const layout = {
+    ...figureData.layout,
+    paper_bgcolor: 'transparent',
+    plot_bgcolor:  'transparent',
+    font: { color: '#a1a1aa', family: "'Geist Mono', monospace", size: 11 },
+    polar: {
+      bgcolor: 'transparent',
+      angularaxis: { gridcolor: '#27272a', linecolor: '#27272a', tickcolor: '#52525b' },
+      radialaxis: { gridcolor: '#27272a', linecolor: '#27272a', visible: true, range: [0, 1] },
+    },
+    margin: { t: 40, b: 20, l: 30, r: 30 },
+  };
+  Plotly.newPlot(containerId, figureData.data, layout, { responsive: true, displayModeBar: false });
+}
+
+// ── Fetch authors on load ─────────────────────────────────────────────────
 
 async function fetchAuthors() {
   try {
     const res  = await fetch(`${API}/authors`);
     const data = await res.json();
     enrolledAuthors = data.authors || [];
-    renderAuthorChips();
-  } catch { /* silently ignore */ }
+    renderChips();
+  } catch { /* silently ignore — API may not be running */ }
 }
-
-// Pre-load the author list on startup in case the server already has enrolled authors
 fetchAuthors();
 </script>
 </body>
